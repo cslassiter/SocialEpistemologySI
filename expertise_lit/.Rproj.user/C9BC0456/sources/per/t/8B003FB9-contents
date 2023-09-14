@@ -1,0 +1,244 @@
+---
+title: "bib analysis"
+output: html_document
+date: "2023-04-04"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(bibliometrix)
+library(tidyverse)
+library(tidytext)
+options(ggrepel.max.overlaps = Inf)
+```
+
+```{r}
+file <- c("savedrecs_phil_1.bib", "savedrecs_phil_2.bib")
+
+M <- convert2df(file = file, dbsource = "isi", format = "bibtex")
+M1 <- M
+
+results <- biblioAnalysis(M1_refined, sep = ";")
+
+S <- summary(object = results, k = 20, pause = FALSE)
+
+S$MostCitedPapers
+
+CR <- citations(M1, field = "author", sep = ";")
+
+as.data.frame(CR$Cited, stringsAsFactors = FALSE)->cites
+
+cites%>%
+  filter(Freq >= 50)%>%
+  arrange(-Freq, CR)%>%
+  view()
+
+M1%>%
+  filter(str_detect(CR, "NO TITLE .*"))%>%
+  view()
+
+M1 %>% 
+  mutate(
+    CR = str_replace_all(CR, "ANNAS JULIA", "ANNAS J" ),
+    CR = str_replace_all(CR, "BUCKWALTER WESLEY", "BUCKWALTER W" ),
+    CR = str_replace_all(CR, "CARTER J.*", "CARTER JA" ),
+    CR = str_replace_all(CR, "CHALMERS DJ", "CHALMERS D" ),
+    CR = str_replace_all(CR, "COLLINS H?.*", "COLLINS H" ),
+    CR = str_replace_all(CR, "DEWEY JOHN", "DEWEY J" ),
+    CR = str_replace_all(CR, "DOUGLAS HEATHERE", "DOUGLAS H" ),
+    CR = str_replace_all(CR, "DREYFUS H.*", "DREYFUS H" ),
+    CR = str_replace_all(CR, "ESTLUND DM", "ESTLUND D" ),
+    CR = str_replace_all(CR, "FELDMAN RICHARD", "FELDMAN R" ),
+    CR = str_replace_all(CR, "FEYERABEND .*", "FEYERABEND P" ),
+    CR = str_replace_all(CR, "FODOR JA", "FODOR J" ),
+    CR = str_replace_all(CR, "GOLDBERG S.*", "GOLDBERG S" ),
+    CR = str_replace_all(CR, "GOLDMAN .*", "GOLDMAN A" ),
+    CR = str_replace_all(CR, "HABERMAS JURGEN", "HABERMAS J" ),
+    CR = str_replace_all(CR, "HAWTHORNE JOHN", "HAWTHORNE J" ),
+    CR = str_replace_all(CR, "HUME DAVID", "HUME D" ),
+    CR = str_replace_all(CR, "KANT IMMANUEL", "KANT I" ),
+    CR = str_replace_all(CR, "KUHN .*", "KUHN T" ),
+    CR = str_replace_all(CR, "LATOUR BRUNO", "LATOUR B" ),
+    CR = str_replace_all(CR, "LONGINO H.*", "LONGINO H" ),
+    CR = str_replace_all(CR, "MILL .*", "MILL JS" ),
+    CR = str_replace_all(CR, "NUSSBAUM MC", "NUSSBAUM M" ),
+    CR = str_replace_all(CR, "O NEILL O", "ONEILL O" ),
+    CR = str_replace_all(CR, "PRITCHARD DUNCAN", "PRITCHARD D" ),
+    CR = str_replace_all(CR, "RAWLS JOHN", "RAWLS J" ),
+    CR = str_replace_all(CR, "RAZ JOSEPH", "RAZ J" ),
+    CR = str_replace_all(CR, "RYLE GILBERT", "RYLE G" ),
+    CR = str_replace_all(CR, "SINGER PETER", "SINGER P" ),
+    CR = str_replace_all(CR, "SOSA^", "SOSA E" ),
+    CR = str_replace_all(CR, "SUNSTEIN CASS R", "SUNSTEIN CR" ),
+    CR = str_replace_all(CR, "WALTON .*", "WALTON D" ),
+    CR = str_replace_all(CR, "WILLIAMS BERNARD", "WILLIAMS B" ),
+    CR = str_replace_all(CR, "WILLIAMSON TIMOTHY", "WILLIAMSON T" ),
+    CR = str_replace_all(CR, "ZAGZEBSKI .*", "ZAGZEBSKI L" ),
+    CR = str_remove_all(CR, "NO TITLE .*")
+  )->M1
+
+
+M1 %>%
+  filter(str_detect(DE, "EXPERT.*") | str_detect(AB, "EXPERT.*") | str_detect(ID, "EXPERT.*"))->M1_refined
+
+
+keywords <- biblioNetwork(M1_refined, analysis = "co-occurrences", network = "author_keywords", sep = ";")
+
+par(mar = c(1, 1, 1, 1))
+png("keyword_phil.png", width = 5000, height = 5000, units = "px", res = 500, bg = "white")
+networkPlot(keywords, normalize="association", weighted=T,degree = 35, Title = "Keyword Co-occurrences in the Philosophical Literature", type = "fruchterman", size=F,edgesize = 10, label.cex = F, labelsize=1)
+dev.off()
+
+co_cite_M1<-biblioNetwork(M1_refined, analysis = "co-citation", network = "references", sep = ";")
+
+networkPlot(co_cite_M1, normalize="association", weighted=T, n = 30, type = "fruchterman", size=T,edgesize = 10, label.cex = F, labelsize=1)
+
+termExtraction(M1_refined, Field = "DE", ngrams = 1,remove.numbers=TRUE, remove.terms=NULL,
+               verbose=FALSE)->TE
+
+TE$DE_TM%>%
+  as_tibble()%>%
+  mutate(value = str_replace_all(value, " ", "_"))%>%
+  mutate(value = strsplit(value, ";"))%>%
+  unnest(cols = c(value))%>%
+  filter(value != "EXPERTISE" & value !=  "EPISTEMOLOGY" & value != "SOCIAL_EPISTEMOLOGY" & value != "EXPERTS" & value != "PHILOSOPHY")%>%
+  mutate(value = trimws(value),
+         value = str_replace_all(value, "INTUITION$", "INTUITIONS"),
+         value = str_replace_all(value, "EXPERT_TESTIMONY", "TESTIMONY"))%>%
+  na.omit()%>%
+  group_by(value)%>%
+  summarise(n = n())%>%
+  ungroup()%>%
+  arrange(-n, value)%>%
+  slice(1:25)%>%
+  mutate(value = str_replace_all(value, "_", " "))%>%
+  ggplot()+
+  aes(x = reorder(value, n), y = n)+
+  geom_bar(stat = "identity")+
+  coord_flip()+
+  theme_minimal(base_size = 18)+
+  labs(y = "Count", x = "Terms in abstracts")+
+  ggtitle("Top 25 Keywords in the Philosophical Literature")->keyword_freq
+
+ggsave("abstract_keywords.png", plot = keyword_freq, width = 11, height = 11, units = "in", dpi = 300, limitsize = FALSE, bg = "white")
+
+
+```
+
+#psych data
+```{r}
+file_psych <- c("savedrecs_psych_1.bib", "savedrecs_psych_2.bib", "savedrecs_psych_3.bib")
+
+
+Mp <- convert2df(file = file_psych, dbsource = "isi", format = "bibtex")
+Mp1 <- Mp
+
+results_psych <- biblioAnalysis(Mp1, sep = ";")
+
+Sp <- summary(object = results_psych, k = 20, pause = FALSE)
+
+Sp$MostCitedPapers
+
+Mp1 <- Mp1%>%
+  mutate(DE = str_replace_all(DE, "JUDGMENTS", "JUDGMENT"),
+         DE = str_replace_all(DE, "DECISION-MAKING", "DECISION MAKING"),
+         DE = str_replace_all(DE,  "JUDGMENT AND DECISION MAKING", "JUDGMENT"),
+         DE = str_replace_all(DE,  "EXPERTS", "EXPERT"))
+
+psych_refined <- Mp1 %>%
+  filter(str_detect(DE, "EXPERT.*(;)?")|str_detect(ID, "EXPERT.*(;)?"))%>%
+  mutate(DE = (str_remove_all(DE, "EXPERT.*")))
+
+psych_refined%>%
+  filter(str_detect(DE, "EXPERT.*;"))%>%
+  select(DE)%>%
+  view()
+
+keywordsp <- biblioNetwork(psych_refined, analysis = "co-occurrences", network = "author_keywords", sep = ";")
+
+par(mar = c(1, 1, 1, 1))
+png("keyword_psych.png", width = 5000, height = 5000, units = "px", res = 400, bg = "white")
+
+networkPlot(keywordsp, normalize="association", weighted=T, n = 30, Title = "Keyword co-occurrences in the psychological literature", type = "fruchterman", size=TRUE, edgesize = 10, remove.isolates = TRUE, label.cex = F, community.repulsion = .05, labelsize=1)->psych_net
+
+dev.off()
+
+psych_net$cluster_res -> x
+psych_net$nodeDegree -> y
+
+tibble(mod = psych_net$cluster_obj$modularity, names = psych_net$cluster_obj$names, group =  psych_net$cluster_obj$membership) -> cluster_vals
+
+cluster_vals%>%
+  rename(mod = 1, names = 2, group = 3)%>%
+  mutate(mod = as.numeric(mod),
+         group = as.numeric(group))->cluster_vals
+
+
+igraph::modularity(psych_net$graph, membership = psych_net$cluster_obj$membership)
+igraph::compare()
+
+psych_net$graph->pg
+
+
+#stole this from stackoverflow for getting connections outside of the cluster
+z <- cluster_louvain(pg)
+
+V(pg)$name1 <- membership(z)
+x <- as_edgelist(pg, names = T)
+V(pg)$name <- 1:vcount(pg)
+cbind(V(pg)$name, V(pg)$name1)
+E(pg)[x[,1] != x[,2]]
+
+E(pg)$color <- ifelse(x[,2] != x[,4], "red", "blue")
+ plot(pg, edge.color = E(pg)$color)
+ plot(cl, pg)
+
+y%>%
+  rename(vertex = node)%>%
+  inner_join(x, by = "vertex")%>%
+  view()
+
+##the whole matrix
+test<- as.numeric(keywordsp)
+x <- as.data.frame(split(test, 1:1197))
+y <- keywordsp@Dimnames[[1]]
+names(x) <- y
+
+termExtraction(Mp1_refined, Field = "DE", ngrams = 1,remove.numbers=TRUE, remove.terms=NULL,
+               verbose=FALSE)->TEp
+TEp$DE_TM%>%
+  as_tibble()%>%
+  mutate(value = str_replace_all(value, " ", "_"))%>%
+  mutate(value = strsplit(value, ";"))%>%
+  unnest(cols = c(value))%>%
+  mutate(value = trimws(value))%>%
+  na.omit()%>%
+  mutate(value = str_replace_all(value, "DECISION-MAKING", "DECISION_MAKING"),
+         value = str_replace_all(value, "COVID-", "COVID"),
+         value = str_replace_all (value, "JUDGMENT_AND_DECISION_MAKING", "JUDGMENTS"))%>%
+  filter(value != "EXPERTISE" & value != "SOCIAL" & value != "EXPERTS")%>%
+  group_by(value)%>%
+  summarise(n = n())%>%
+  ungroup()%>%
+  arrange(-n, value)%>%
+  slice(1:25)%>%
+  mutate(value = str_replace_all(value, "_", " "))%>%
+  ggplot()+
+  aes(x = reorder(value, n), y = n)+
+  geom_bar(stat = "identity")+
+  coord_flip()+
+  theme_minimal(base_size = 18)+
+  labs(y = "Count", x = "Terms in abstracts")+
+  ggtitle("Top 25 Keywords in the Psychological Literature")-> keyword_freq_psych
+
+ggsave("abstract_keywords_psych.png", plot = keyword_freq_psych, width = 11, height = 11, units = "in", dpi = 300, limitsize = FALSE, bg = "white")
+
+
+
+```
+
